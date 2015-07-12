@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 import httplib
 import json
 import os.path
@@ -18,7 +19,7 @@ class Context:
         
         with open(SECURITY_FILE,'r') as securityFile:
             self.securityInfo = json.load(securityFile)
-            print('loaded security information from ' + os.path.abspath(SECURITY_FILE))
+            print('loaded security information from ' + os.path.abspath(SECURITY_FILE), file=sys.stderr)
             
         if not DIGITAL_OCEAN_API_KEY in self.securityInfo:
             raise Exception(DIGITAL_OCEAN_API_KEY + ' not found in security file')
@@ -30,13 +31,13 @@ class Context:
         keyFound = False
         for key in listKeysResponse['ssh_keys']:
             if key['public_key'] == self.securityInfo[PUBLIC_SSH_KEY]:
-                print('ssh key already registered')
+                print('ssh key already registered', file=sys.stderr)
                 keyFound = True
                 break
         
         if not keyFound:
             self.registerSSHKey(self.securityInfo[PUBLIC_SSH_KEY])
-            print('ssh key registered')
+            print('ssh key registered', file = sys.stderr)
         
     def doPOST(self, path, body):
         conn = httplib.HTTPSConnection(DO_API_HOST)
@@ -64,6 +65,12 @@ class Context:
         responseJSON = json.load(resp)
         return responseJSON
 
+    def listImages(self):
+        return self.doGET('/v2/images')
+    
+    def listSizes(self):
+        return self.doGET('/v2/sizes')
+    
     def listRegions(self):
         return self.doGET('/v2/regions')
     
@@ -81,8 +88,18 @@ if __name__ == '__main__':
                 regions = do.listRegions()
                 json.dump(regions,sys.stdout,indent=3)
                 sys.exit(0)
+            elif len(sys.argv) > 2 and sys.argv[2] == 'images':
+                do = Context()
+                images = do.listImages()
+                json.dump(images,sys.stdout,indent=3)
+                sys.exit(0)
+            elif len(sys.argv) > 2 and sys.argv[2] == 'sizes':
+                do = Context()
+                sizes = do.listSizes()
+                json.dump(sizes,sys.stdout,indent=3)
+                sys.exit(0)
         
-    print('usage')
-    print('\tdigitalocean list regions                     #list all regions')
+    print('usage', file=sys.stderr)
+    print('\tdigitalocean list regions        #list all regions', file=sys.stderr)
               
     
