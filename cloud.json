@@ -1,4 +1,16 @@
 {
-    "server_1" : {
+    "server1" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server1.acme.com", "acme.com"]
+    }
+    ,"server2" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server2.acme.com"]
     }
 }

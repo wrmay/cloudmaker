@@ -24,7 +24,30 @@ An example is show below:
     "digital_ocean_api_key" : "fjejhuiu9880hthisimadeup0845943unsff4utrjd"
     ,"public_ssh_key" : "ssh-rsa fr99bjr9urugrbtthisisalsomadeupPDQ fredy@acme.com"
 }```
-4. To be continued
+4. Create _cloud.json_ to describe what you want to deploy.  See the exammple
+below.
+```json
+{
+    "server1" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server1.acme.com", "acme.com"]
+    }
+    ,"server2" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server2.acme.com"]
+    }
+}
+```
+See the reference section for possible values of region, size and image. If the
+region supports IPv6, it will automatically be enabled. If the region supports
+private networking, it will be enabled. The ssh key defined in _security.json_
+will automatically be associated with all created droplets.  
    
 #Reference#
 

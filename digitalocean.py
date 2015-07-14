@@ -28,15 +28,16 @@ class Context:
             raise Exception(PUBLIC_SSH_KEY + ' not found in security file')
         
         listKeysResponse = self.doGET('/v2/account/keys')
-        keyFound = False
+        self.sshKeyId = None
         for key in listKeysResponse['ssh_keys']:
             if key['public_key'] == self.securityInfo[PUBLIC_SSH_KEY]:
                 print('ssh key already registered', file=sys.stderr)
-                keyFound = True
+                self.sshKeyId = key['id']
                 break
         
-        if not keyFound:
-            self.registerSSHKey(self.securityInfo[PUBLIC_SSH_KEY])
+        if self.sshKeyId is None:
+            resp = self.registerSSHKey(self.securityInfo[PUBLIC_SSH_KEY])
+            self.sshKeyId = resp['ssh_key']['id']
             print('ssh key registered', file = sys.stderr)
         
     def doPOST(self, path, body):
@@ -45,9 +46,10 @@ class Context:
         headers['Content-Type'] = 'application/json'
         headers['Authorization'] = 'Bearer ' + self.securityInfo[DIGITAL_OCEAN_API_KEY]
         conn.request('POST',path + '?per_page={0}'.format(PER_PAGE),json.dumps(body),headers)
+#        conn.request('POST',path,bytearray(json.dumps(body),'utf-8'),headers)
         resp = conn.getresponse()
-        if resp.status != 201:
-            raise Exception('an error occurred while invoking POST on {0}  - http response was {0}/{1}'.format(resp.status,resp.reason))
+        if resp.status != 201 and resp.status != 202:
+            raise Exception('an error occurred while invoking POST on {2}  - http response was {0}/{1}'.format(resp.status,resp.reason, path))
     
         responseJSON = json.load(resp)
         return responseJSON
@@ -74,11 +76,22 @@ class Context:
     def listRegions(self):
         return self.doGET('/v2/regions')
     
+    def listDroplets(self):
+        return self.doGET('/v2/droplets')
+    
+    def getAction(self, id):
+        return self.doGET('/v2/actions/{0}'.format(id))
+    
     def registerSSHKey(self, key):
         body = dict()
         body['public_key'] = key
         return self.doPOST('/v2/account/keys', body)
     
+    def createDroplet(self, request):
+        # seems like this class should not be doing this - consider refactoring
+        request['ssh_keys'] = [self.sshKeyId]
+        return self.doPOST('/v2/droplets', request)
+            
     
 if __name__ == '__main__':
     if len(sys.argv) > 1:
