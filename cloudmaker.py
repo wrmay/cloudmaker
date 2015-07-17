@@ -37,7 +37,6 @@ def dropletMatchesRequest(droplet, dropletReq):
 def createDropletRequest(dropletDef):
     result = dict()
     
-    #region
     if 'region' not in dropletDef:
         raise Exception('droplet defintion is missing required property: region')
     
@@ -97,8 +96,61 @@ def createDropletRequest(dropletDef):
     
     return result
 
+def domainName(name):
+    i = name.find('.')
+    if i == -1:
+        raise Exception(name + ' is not a valid domain name and does not contain a valid domain name')
+    
+    j = name.find('.', i+1)
+    if j == -1:
+        return name
+    else:
+        return name[i+1:]
+
+def recordName(name):
+    i = name.find('.')
+    if i == -1:
+        raise Exception(name + ' is not a valid domain name and does not contain a valid domain name')
+    
+    j = name.find('.', i+1)
+    if j == -1:
+        return '@'
+    else:
+        return name[:i]
+
+def verifyDomainRecord(name, nameMap, ipAddress, rtype):
+    dname = domainName(name)
+    rname = recordName(name)
+    if dname in nameMap:
+        result = False
+        for r in nameMap[dname]:
+            if r['type'] == rtype:
+                if r['name'] == rname:
+                    if r['data'].lower() == ipAddress.lower():
+                        result = True
+                        break
+                    else:
+                        raise Exception('An ' + rtype + ' record for ' + name + ' exists but points to the wrong IP address: ' + r['data'] )
+        
+        return result
+    else:
+        return False
+
+def createDomainRecord(do, nameMap, name, ipAddress, rtype):
+    dname = domainName(name)
+    rname = recordName(name)
+    if dname not in nameMap:
+        do.createDomain(dname,'127.0.0.1')
+        nameMap[dname] = []
+        for dr in do.listDomainRecords(dname)['domain_records']:
+            do.deleteDomainRecord(dname, dr['id'])
+            
+    rec = do.createDomainRecord(dname, rname, ipAddress, rtype)
+    nameMap[dname].append(rec['domain_record'])
+    
 if __name__ == '__main__':
     if not os.path.isfile('cloud.json'):
+
         sys.exit('required file clound.json not found in the current directory')
         
     with open('cloud.json', 'r') as cloudFile:
@@ -106,7 +158,7 @@ if __name__ == '__main__':
         
     do = digitalocean.Context()
     
-    #grab reference information about regions and images
+    #grab reference information about regions and images and existing droplets
     resp = do.listRegions()
     regions = dict()
     for region in resp['regions']:
@@ -142,32 +194,82 @@ if __name__ == '__main__':
             provisionedDroplets[name] = resp['links']['actions'][0]['id']
             print('droplet ' + name + ' requested in region ' + dropletRequest['region'], file=sys.stderr)
             
-    if len(provisionedDroplets) == 0:
-        sys.exit(0) #EXIT
+    if len(provisionedDroplets) > 0:        
+        # now wait for all droplets to actually be provisioned
+        errCount = 0
+        print('waiting 60s for droplets to be provisioned', file=sys.stderr)
+        time.sleep(60)
+        for attempt in range(0,10):
+            for name in provisionedDroplets.keys():
+                resp = do.getAction(provisionedDroplets[name])
+                if resp['action']['status'] == 'completed':
+                    print('droplet {0} provisioned'.format(name), file=sys.stderr)
+                    del provisionedDroplets[name]
+                elif resp['action']['status'] == 'errored':
+                    errCount += 1
+                    print('provisioning of droplet {0} failed'.format(name), file=sys.stderr)
+                    del provisionedDroplets[name]
+            
+            if len(provisionedDroplets) == 0:
+                break
+            
+            print('waiting 20s for droplets to be provisioned', file=sys.stderr)
+            time.sleep(20)
+            
+        if errCount > 0:
+            raise Exception('{0} droplet(s) could not be provisioned'.format(errCount))
         
-    # now wait for all droplets to actually be provisioned
-    errCount = 0
-    print('waiting 60s for droplets to be provisioned', file=sys.stderr)
-    time.sleep(60)
-    for attempt in range(0,10):
-        for name in provisionedDroplets.keys():
-            resp = do.getAction(provisionedDroplets[name])
-            if resp['action']['status'] == 'completed':
-                print('droplet {0} provisioned'.format(name), file=sys.stderr)
-                del provisionedDroplets[name]
-            elif resp['action']['status'] == 'errored':
-                errCount += 1
-                print('provisioning of droplet {0} failed'.format(name), file=sys.stderr)
-                del provisionedDroplets[name]
+        if len(provisionedDroplets) > 0:
+            raise Exception('some provision operations could not be verified')
+      
+   
+    #retrieve all of the droplets that are in the cloud definition
+    #including those just created and those that already existed
+    dropletMap = dict()
+    droplets = do.listDroplets()['droplets']
+    for droplet in droplets:
+        if droplet['name'] in cloudDef:
+            dropletMap[droplet['name']] = droplet
+   
+    #compile a summary of the current state of affairs w.r.t DNS names
+    #nameMap will contain domain name + an array of domain records returned
+    #from the digital ocean API (only A records and AAAA records)
+    nameMap = dict()
+    domains = do.listDomains()
+    for d in domains['domains']:
+        recordList = []
+        domainRecords = do.listDomainRecords(d['name'])
+        for dr in domainRecords['domain_records']:
+            if dr['type'] == 'A' or dr['type'] == 'AAAA':
+                recordList.append(dr)
         
-        if len(provisionedDroplets) == 0:
-            break
+        nameMap[d['name']] = recordList
         
-        print('waiting 20s for droplets to be provisioned', file=sys.stderr)
-        time.sleep(20)
-        
-    if errCount > 0:
-        raise Exception('{0} droplet(s) could not be provisioned'.format(errCount))
-        
-    
+    #go through cloudDef - if a record already exists - verify it points to the
+    #correct address (raise an error if not) - if the record doesn't exist,
+    #create it, creating the domain as well when necessary
+    for dropletName in cloudDef.keys():
+        dropletDef = cloudDef[dropletName]
+        if 'names' in dropletDef and len(dropletDef['names']) > 0:
+            publicAddressV4 = do.publicAddressIPV4(dropletMap[dropletName])
+            publicAddressV6 = do.publicAddressIPV6(dropletMap[dropletName])
+            for name in dropletDef['names']:
+                if verifyDomainRecord(name, nameMap, publicAddressV4, 'A'):
+                    print('A record for ' + name + ' verified')
+                else:
+                    createDomainRecord(do, nameMap, name, publicAddressV4, 'A')
+                    print('created A record ' + name + ' pointing to ' + publicAddressV4)
+                
+                if publicAddressV6 != None:
+                    if verifyDomainRecord(name, nameMap, publicAddressV6, 'AAAA'):
+                        print('AAAA record for ' + name + ' verified')
+                    else:
+                        createDomainRecord(do, nameMap, name, publicAddressV6, 'AAAA')
+                        print('created AAAA record ' + name + ' pointing to ' + publicAddressV6)
+                    
+                    
+                                    
+                
+    #lastly, update the dropletDef with network information and write it back
+    #uses dropletMap created above
     

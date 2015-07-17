@@ -8,7 +8,10 @@ Provisioning proceeds in the following order:
 Digital Ocean account, it is uploaded.
 2. The servers are provisioned.
 3. The requested DNS records are created / verified for each server. If
-there is already a record with the requested name, provisioning will fail.
+there is already a record with the requested name, mapped to another server,
+provisioning will fail.  If the provisioned server supports  ipv6 then an
+'AAAA' record will be created pointing to its ipv6 interface (in addition to
+an 'A' record pointing to its ipv4 interface).
 4. The networking configuration of any provisioned droplets is written back
 into _cloud.json_.
 
@@ -49,6 +52,7 @@ region supports IPv6, it will automatically be enabled. If the region supports
 private networking, it will be enabled. The ssh key defined in _security.json_
 will automatically be associated with all created droplets.  
    
+
 #Reference#
 
 Sizes

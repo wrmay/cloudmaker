@@ -67,6 +67,16 @@ class Context:
         responseJSON = json.load(resp)
         return responseJSON
 
+    def doDELETE(self, path):
+        conn = httplib.HTTPSConnection(DO_API_HOST)
+        headers = dict()
+        headers['Content-Type'] = 'application/json'
+        headers['Authorization'] = 'Bearer ' + self.securityInfo[DIGITAL_OCEAN_API_KEY]
+        conn.request('DELETE',path + '?per_page={0}'.format(PER_PAGE),None,headers)
+        resp = conn.getresponse()
+        if resp.status != 204:
+            raise Exception('an error occurred while invoking DELETE on {2}  - http response was {0}/{1}'.format(resp.status,resp.reason, path))
+
     def listImages(self):
         return self.doGET('/v2/images')
     
@@ -78,6 +88,12 @@ class Context:
     
     def listDroplets(self):
         return self.doGET('/v2/droplets')
+    
+    def listDomains(self):
+        return self.doGET('/v2/domains')
+    
+    def listDomainRecords(self, domainName):
+        return self.doGET('/v2/domains/' + domainName + '/records')
     
     def getAction(self, id):
         return self.doGET('/v2/actions/{0}'.format(id))
@@ -92,6 +108,37 @@ class Context:
         request['ssh_keys'] = [self.sshKeyId]
         return self.doPOST('/v2/droplets', request)
             
+    def createDomain(self, domain, ipAddress):
+        body = dict()
+        body['name'] = domain
+        body['ip_address'] = ipAddress
+        return self.doPOST('/v2/domains', body)
+
+    def createDomainRecord(self, domain, name, ipAddress, recType):
+        body = dict()
+        body['name'] = name
+        body['data'] = ipAddress
+        body['type'] = recType
+        return self.doPOST('/v2/domains/' + domain + '/records', body)
+
+    
+    def deleteDomainRecord(self, domainName, recordId):
+        self.doDELETE('/v2/domains/' + domainName + '/records/{0}'.format(recordId))
+        
+            
+    def publicAddressIPV4(self, droplet):
+        for network in droplet['networks']['v4']:
+            if network['type'] == 'public':
+                return network['ip_address']
+        
+        return None
+    
+    def publicAddressIPV6(self, droplet):
+        for network in droplet['networks']['v6']:
+            if network['type'] == 'public':
+                return network['ip_address']
+        
+        return None
     
 if __name__ == '__main__':
     if len(sys.argv) > 1:
