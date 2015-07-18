@@ -148,6 +148,78 @@ def createDomainRecord(do, nameMap, name, ipAddress, rtype):
     rec = do.createDomainRecord(dname, rname, ipAddress, rtype)
     nameMap[dname].append(rec['domain_record'])
     
+def writeInventory(do):
+    # make a map of domain records by IP address - one for A records
+    # and another for AAAA records- key is IP address, value is list of names
+    ARecordMap = dict()
+    AAAARecordMap = dict()
+    for domain in do.listDomains()["domains"]:
+        dname = domain['name']
+        for drec in do.listDomainRecords(dname)['domain_records']:
+            if drec['type'] == 'A':
+                if drec['name'] == '@':
+                    name = dname
+                else:
+                    name =  drec['name']  + '.' + dname
+                    
+                ip = drec['data']
+                
+                if ip not in ARecordMap:
+                    ARecordMap[ip] = []
+                    
+                ARecordMap[ip].append(name)
+            elif drec['type'] == 'AAAA':
+                if drec['name'] == '@':
+                    name = dname
+                else:
+                    name =  drec['name']  + '.' + dname
+                    
+                ip = drec['data'].lower()
+                if ip not in AAAARecordMap:
+                    AAAARecordMap[ip] = []
+                    
+                AAAARecordMap[ip].append(name)
+                
+    #now got through all droplet defs, creating a cloud_maker formatted
+    #inventory file
+    inventory = dict()
+    for droplet in do.listDroplets()['droplets']:
+        cloudmakerDroplet =  dict()
+        cloudmakerDroplet['region'] = droplet['region']['slug']
+        cloudmakerDroplet['image'] = droplet['image']['slug']
+        cloudmakerDroplet['size'] = droplet['size_slug']
+        cloudmakerDroplet['backups'] = 'backups' in droplet['features']
+        cloudmakerDroplet['public_network_interfaces'] = dict()
+        cloudmakerDroplet['private_network_interfaces'] = dict()
+        cloudmakerDroplet['names'] = []
+        for network in droplet['networks']['v4']:
+            if network['type'] == 'public':
+                cloudmakerDroplet['public_network_interfaces']['ipv4'] = network['ip_address']
+                if network['ip_address'] in ARecordMap:
+                    for name in ARecordMap[network['ip_address']]:
+                        if name not in cloudmakerDroplet['names']:
+                            cloudmakerDroplet['names'].append(name)
+            else :
+                cloudmakerDroplet['private_network_interfaces']['ipv4'] = network['ip_address']
+                
+        for network in droplet['networks']['v6']:
+            if network['type'] == 'public':
+                cloudmakerDroplet['public_network_interfaces']['ipv6'] = network['ip_address'].lower()
+                if network['ip_address'].lower() in AAAARecordMap:
+                    for name in AAAARecordMap[network['ip_address'].lower()]:
+                        if name not in cloudmakerDroplet['names']:
+                            cloudmakerDroplet['names'].append(name)
+            else :
+                cloudmakerDroplet['private_network_interfaces']['ipv6'] = network['ip_address']
+
+        inventory[droplet['name']] = cloudmakerDroplet
+        
+    with open('cloudmaker_inventory.json', 'w') as outfile:
+        json.dump(inventory,outfile,indent = 3)
+    
+    print('wrote inventory to file: "cloudmaker_inventory.json"', file=sys.stderr)
+    
+    
 if __name__ == '__main__':
     if not os.path.isfile('cloud.json'):
 
@@ -272,4 +344,5 @@ if __name__ == '__main__':
                 
     #lastly, update the dropletDef with network information and write it back
     #uses dropletMap created above
+    writeInventory(do)
     
