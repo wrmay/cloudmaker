@@ -1,5 +1,5 @@
 #Overview#
-Cloudbuilder provisions your Digital Ocean script based on a JSON cloud
+Cloudmaker provisions your Digital Ocean script based on a JSON cloud
 definition.  Provisioning is idempotent so if there is a failure part of the
 way through provisioning, it can be run again without harm.
 
