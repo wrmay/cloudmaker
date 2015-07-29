@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import digitalocean
+import cloudmaker.digitalocean
 import json
 import os.path
 import re
@@ -220,7 +220,7 @@ def writeInventory(do):
     print('wrote inventory to file: "cloudmaker_inventory.json"', file=sys.stderr)
     
     
-if __name__ == '__main__':
+def doStuff():
     if not os.path.isfile('cloud.json'):
 
         sys.exit('required file clound.json not found in the current directory')
@@ -228,7 +228,7 @@ if __name__ == '__main__':
     with open('cloud.json', 'r') as cloudFile:
         cloudDef = json.load(cloudFile)
         
-    do = digitalocean.Context()
+    do = cloudmaker.digitalocean.Context()
     
     #grab reference information about regions and images and existing droplets
     resp = do.listRegions()
@@ -345,4 +345,29 @@ if __name__ == '__main__':
     #lastly, update the dropletDef with network information and write it back
     #uses dropletMap created above
     writeInventory(do)
+    
+def printUsage():
+    print('Usage:',file=sys.stderr)
+    print('   cloudmaker inventory         prints inventory to cloudmaker_inventory.json',file=sys.stderr)
+    
+    
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        printUsage()
+        sys.exit(1)
+        
+    if not os.path.isfile('cloud.json'):
+        sys.exit('required file clound.json not found in the current directory')
+        
+    with open('cloud.json', 'r') as cloudFile:
+        cloudDef = json.load(cloudFile)
+        
+    do = cloudmaker.digitalocean.Context()
+    
+    cmd = sys.argv[1]
+    if cmd == 'inventory':
+        writeInventory(do)
+    else:
+        sys.exit('unknown command: ' + cmd)
+        
     

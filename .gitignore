@@ -1,3 +1,6 @@
+MANIFEST
+dist/
 security.json
 cloudmaker_inventory.json
 **/*.pyc
+**/*.egg-info
