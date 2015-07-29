@@ -217,7 +217,7 @@ def writeInventory(do):
     with open('cloudmaker_inventory.json', 'w') as outfile:
         json.dump(inventory,outfile,indent = 3)
     
-    print('wrote inventory to file: "cloudmaker_inventory.json"', file=sys.stderr)
+    print('wrote inventory to file: "inventory.json"', file=sys.stderr)
     
     
 def doStuff():

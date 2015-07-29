@@ -26,14 +26,86 @@ An example is show below:
 }```
 
 #Usage#
-__Generate an inventory of servers  deployed in your Digital Ocean account__
 
-```cloudmaker inventory```
-
-This command will write a file similar to the one below describing the servers
-currently deployed.
+Cloudmaker supports the following commands:
 
 ```
+cloudmaker deploy <cloud_def.json>
+```
+Deploys a collection of resources desribed by a cloud defintion file. See the
+reference section for details of the format.
+
+Provisioning is idempotent so if there is a failure part of the way through the
+provision command can be run again without harm.
+
+Provisioning proceeds in the following order:
+1. If the ssh key provided in _security.json_ is not present within your
+Digital Ocean account, it is uploaded.
+2. The servers are provisioned.
+3. The requested DNS records are created / verified for each server. If
+there is already a record with the requested name, mapped to another server,
+provisioning will fail.  If the provisioned server supports  ipv6 then an
+'AAAA' record will be created pointing to its ipv6 interface (in addition to
+an 'A' record pointing to its ipv4 interface).
+4. The full inventory of droplets provisioned in the Digital Ocean account
+(whether provisioned by cloudmaker or something else) is written to
+_inventory.json_ in the current directory.
+
+If the region where a droplet is provisioned supports IPv6, it will
+automatically be enabled. Similarly, if a region supports private networking,
+it will be enabled on droplets provisioned to that region.   
+
+
+```
+cloudmaker undeploy <cloud_def.json>
+```
+All droplets defined in the cloud definition file are destroyed.  A records
+and AAAA records pointing to the droplet are removed.  If no DNS records
+other than NS records remain in the zone file, the whole domain will be removed.
+After processing is complete, _inventory.json_ will be updated to reflect the
+new state.
+
+```
+cloudmaker inventory
+```
+Updates the _inventory.json_ with the latest information.
+
+#Reference#
+
+__Cloud Definition File Format__
+
+An example is shown below. Valid values for region, size and image appear at
+the bottom of the page.
+
+```json
+{
+    "server1" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server1.acme.com", "acme.com"]
+    }
+    ,"server2" : {
+          "region" : "nyc3"
+        , "size" : "1gb"
+        , "image" :  "debian-7-0-x64"
+        , "backups" : false
+        , "names" : [ "server2.acme.com"]
+    }
+}
+
+```
+
+__inventory.json File Format__
+
+The _inventory.json_ file is similar to the cloud definition file with
+additional information describing the network interfaces of provisioned
+droplets.  Note that cloudmaker automatically matches DNS A records and AAAA
+records with droplets.  The names associated with each droplet are recorded in
+the _names_ attribute.
+
+```json
 {
    "server1": {
       "names": [
@@ -70,58 +142,9 @@ currently deployed.
    }
 }
 ```
-NOTES 
-
-* Cloudmaker automatically matches DNS A records and AAAA records with
-droplets.  The names matching associated with each droplet are recorded in
-the _names_ attribute.
-* Each time a cloudmaker command is run, the _cloudmaker\_inventory.json_ file
-is updated with the latest information.
-
-
-your Digital Ocean script based on a JSON cloud
-definition.  Provisioning is idempotent so if there is a failure part of the
-way through provisioning, it can be run again without harm.
-
-Provisioning proceeds in the following order:
-1. If the ssh key provided in _security.json_ is not present within your
-Digital Ocean account, it is uploaded.
-2. The servers are provisioned.
-3. The requested DNS records are created / verified for each server. If
-there is already a record with the requested name, mapped to another server,
-provisioning will fail.  If the provisioned server supports  ipv6 then an
-'AAAA' record will be created pointing to its ipv6 interface (in addition to
-an 'A' record pointing to its ipv4 interface).
-4. The networking configuration of any provisioned droplets is written back
-into _cloud.json_.
-
-4. Create _cloud.json_ to describe what you want to deploy.  See the exammple
-below.
-```json
-{
-    "server1" : {
-          "region" : "nyc3"
-        , "size" : "1gb"
-        , "image" :  "debian-7-0-x64"
-        , "backups" : false
-        , "names" : [ "server1.acme.com", "acme.com"]
-    }
-    ,"server2" : {
-          "region" : "nyc3"
-        , "size" : "1gb"
-        , "image" :  "debian-7-0-x64"
-        , "backups" : false
-        , "names" : [ "server2.acme.com"]
-    }
-}
-```
-See the reference section for possible values of region, size and image. If the
-region supports IPv6, it will automatically be enabled. If the region supports
-private networking, it will be enabled. The ssh key defined in _security.json_
-will automatically be associated with all created droplets.  
    
 
-#Reference#
+__Valid Values for Various Attributes__
 
 Sizes
 * "512mb"
