@@ -7,6 +7,8 @@ import re
 import sys
 import time
 
+do = None
+
 # droplet is the droplet definition returned by the Digital Ocean
 # API, dropletReq is from the cloud definition file
 def dropletMatchesRequest(droplet, dropletReq):
@@ -96,6 +98,7 @@ def createDropletRequest(dropletDef):
     
     return result
 
+
 def domainName(name):
     i = name.find('.')
     if i == -1:
@@ -107,6 +110,7 @@ def domainName(name):
     else:
         return name[i+1:]
 
+
 def recordName(name):
     i = name.find('.')
     if i == -1:
@@ -117,6 +121,7 @@ def recordName(name):
         return '@'
     else:
         return name[:i]
+
 
 def verifyDomainRecord(name, nameMap, ipAddress, rtype):
     dname = domainName(name)
@@ -136,7 +141,8 @@ def verifyDomainRecord(name, nameMap, ipAddress, rtype):
     else:
         return False
 
-def createDomainRecord(do, nameMap, name, ipAddress, rtype):
+
+def createDomainRecord(nameMap, name, ipAddress, rtype):
     dname = domainName(name)
     rname = recordName(name)
     if dname not in nameMap:
@@ -148,7 +154,8 @@ def createDomainRecord(do, nameMap, name, ipAddress, rtype):
     rec = do.createDomainRecord(dname, rname, ipAddress, rtype)
     nameMap[dname].append(rec['domain_record'])
     
-def writeInventory(do):
+    
+def writeInventory():
     # make a map of domain records by IP address - one for A records
     # and another for AAAA records- key is IP address, value is list of names
     ARecordMap = dict()
@@ -220,16 +227,8 @@ def writeInventory(do):
     print('wrote inventory to file: "inventory.json"', file=sys.stderr)
     
     
-def doStuff():
-    if not os.path.isfile('cloud.json'):
-
-        sys.exit('required file clound.json not found in the current directory')
-        
-    with open('cloud.json', 'r') as cloudFile:
-        cloudDef = json.load(cloudFile)
-        
-    do = cloudmaker.digitalocean.Context()
-    
+def deploy(cloudDef):
+            
     #grab reference information about regions and images and existing droplets
     resp = do.listRegions()
     regions = dict()
@@ -339,16 +338,38 @@ def doStuff():
                         createDomainRecord(do, nameMap, name, publicAddressV6, 'AAAA')
                         print('created AAAA record ' + name + ' pointing to ' + publicAddressV6)
                     
-                    
-                                    
-                
     #lastly, update the dropletDef with network information and write it back
     #uses dropletMap created above
     writeInventory(do)
     
+    
+def undeploy(cloudDef):
+    resp = do.listDroplets()
+    droplets = dict()
+    for droplet in resp['droplets']:
+        droplets[droplet['name']] = droplet
+        
+    
+    
 def printUsage():
     print('Usage:',file=sys.stderr)
-    print('   cloudmaker inventory         prints inventory to cloudmaker_inventory.json',file=sys.stderr)
+    print('   cloudmaker inventory              prints inventory to cloudmaker_inventory.json',file=sys.stderr)
+    print('   cloudmaker deploy <cloud.json>    deploys inventory to described in <cloud.json>',file=sys.stderr)
+    print('   cloudmaker ubdeploy <cloud.json>  undeploys inventory to described in <cloud.json>',file=sys.stderr)
+    
+    
+def loadCloudDef(cmd):
+    if len(sys.argv) < 3:
+        sys.exit('cloud definition file not provided for {0} command'.format(cmd))
+    
+    fname = sys.argv[2]
+    if not os.path.isfile(fname):
+        sys.exit('cloud definition file {0} not found'.format(fname))
+        
+    with open(fname, 'r') as cloudFile:
+        cloudDef = json.load(cloudFile)
+        
+    return cloudDef
     
     
 if __name__ == '__main__':
@@ -356,17 +377,19 @@ if __name__ == '__main__':
         printUsage()
         sys.exit(1)
         
-    if not os.path.isfile('cloud.json'):
-        sys.exit('required file clound.json not found in the current directory')
-        
-    with open('cloud.json', 'r') as cloudFile:
-        cloudDef = json.load(cloudFile)
-        
     do = cloudmaker.digitalocean.Context()
     
     cmd = sys.argv[1]
+    
     if cmd == 'inventory':
-        writeInventory(do)
+            writeInventory(do)
+    elif cmd == 'deploy':
+        cloudDef = loadCloudDef('deploy')
+        deploy(cloudDef)
+    elif cmd == 'undeploy':
+        cloudDef = loadCloudDef('undeploy')
+        undeploy(cloudDef)
+        pass
     else:
         sys.exit('unknown command: ' + cmd)
         
