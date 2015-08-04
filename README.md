@@ -1,5 +1,12 @@
+#Release Notes#
+
+0.1 is the initial release of Cloudmaker. Enjoy ... and please feel free to
+suggest or contribute improvements!
+
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.
+You define your inventory in a json cloud definition file and Cloudmaker takes
+care deploying to Digital Ocean including setting up your DNS records.
 
 #Prerequisites#
 * A Digital Ocean Account
@@ -41,15 +48,19 @@ provision command can be run again without harm.
 Provisioning proceeds in the following order:
 1. If the ssh key provided in _security.json_ is not present within your
 Digital Ocean account, it is uploaded.
-2. The servers are provisioned.
+2. The servers are provisioned. If provided, the server will be provisioned
+with your public ssh key so you will be able to access it with
+passwordless ssh
 3. The requested DNS records are created / verified for each server. If
 there is already a record with the requested name, mapped to another server,
 provisioning will fail.  If the provisioned server supports  ipv6 then an
-'AAAA' record will be created pointing to its ipv6 interface (in addition to
-an 'A' record pointing to its ipv4 interface).
+'AAAA' record will be created pointing to its public ipv6 interface in addition to
+an 'A' record pointing to its public ipv4 interface.
 4. The full inventory of droplets provisioned in the Digital Ocean account
 (whether provisioned by cloudmaker or something else) is written to
-_inventory.json_ in the current directory.
+_inventory.json_ in the current directory.  This file contains useful
+information that cannot be known before provisioning, such as the ip addresses
+of provisioned servers
 
 If the region where a droplet is provisioned supports IPv6, it will
 automatically be enabled. Similarly, if a region supports private networking,
@@ -93,6 +104,7 @@ the bottom of the page.
         , "backups" : false
         , "names" : [ "server2.acme.com"]
     }
+}
 }
 
 ```
