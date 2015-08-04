@@ -7,7 +7,6 @@ import re
 import sys
 import time
 
-do = None
 
 # droplet is the droplet definition returned by the Digital Ocean
 # API, dropletReq is from the cloud definition file
@@ -221,13 +220,14 @@ def writeInventory():
 
         inventory[droplet['name']] = cloudmakerDroplet
         
-    with open('cloudmaker_inventory.json', 'w') as outfile:
+    with open('inventory.json', 'w') as outfile:
         json.dump(inventory,outfile,indent = 3)
     
     print('wrote inventory to file: "inventory.json"', file=sys.stderr)
     
     
 def deploy(cloudDef):
+    global regions,images
             
     #grab reference information about regions and images and existing droplets
     resp = do.listRegions()
@@ -328,27 +328,90 @@ def deploy(cloudDef):
                 if verifyDomainRecord(name, nameMap, publicAddressV4, 'A'):
                     print('A record for ' + name + ' verified')
                 else:
-                    createDomainRecord(do, nameMap, name, publicAddressV4, 'A')
+                    createDomainRecord(nameMap, name, publicAddressV4, 'A')
                     print('created A record ' + name + ' pointing to ' + publicAddressV4)
                 
                 if publicAddressV6 != None:
                     if verifyDomainRecord(name, nameMap, publicAddressV6, 'AAAA'):
                         print('AAAA record for ' + name + ' verified')
                     else:
-                        createDomainRecord(do, nameMap, name, publicAddressV6, 'AAAA')
+                        createDomainRecord(nameMap, name, publicAddressV6, 'AAAA')
                         print('created AAAA record ' + name + ' pointing to ' + publicAddressV6)
                     
     #lastly, update the dropletDef with network information and write it back
     #uses dropletMap created above
-    writeInventory(do)
+    writeInventory()
     
     
 def undeploy(cloudDef):
+    #create a map of DNS records by domain name
+    # each entry is a list of records (A and AAAA)
+    names = dict()
+    for domain in do.listDomains()['domains']:
+        domainName = domain['name']
+        names[domainName] = []
+        for domainRec in do.listDomainRecords(domainName)['domain_records']:
+            if not domainRec['type'] == 'NS':
+                names[domainName].append(domainRec)
+        
+    
+    # create a map of droplets by droplet name
     resp = do.listDroplets()
     droplets = dict()
     for droplet in resp['droplets']:
-        droplets[droplet['name']] = droplet
+        droplets[droplet['name']] = droplet 
         
+    for dname in cloudDef.keys():
+        if dname in droplets:
+            do.deleteDroplet(droplets[dname]['id'])
+            print('deleted droplet ' + dname, file=sys.stderr)
+            
+            # now find all A and AAAA records pointing to the
+            # droplets public Ipv4 and Ipv6 interfaces
+            ipv4 = None
+            ipv6 = None
+            
+            for network in droplets[dname]['networks']['v4']:
+                if network['type'] == 'public':
+                    ipv4 = network['ip_address']
+                    break
+                
+            for network in droplets[dname]['networks']['v6']:
+                if network['type'] == 'public':
+                    ipv6 = network['ip_address']
+                    break
+                
+            #search the name map for ipv4
+            for domainName in names.keys():
+                for domainRecord in names[domainName]:
+                    if domainRecord['data'] == ipv4:
+                        do.deleteDomainRecord(domainName,domainRecord['id'])
+                        names[domainName].remove(domainRecord)
+                        print('deleted A record for ' + ipv4)
+                        if len(names[domainName]) == 0:
+                            do.deleteDomain(domainName)
+                            print('deleted domain ' + domainName)
+                            names.pop(domainName)
+                            
+                        break
+
+            #search the name map for ipv6
+            for domainName in names.keys():
+                for domainRecord in names[domainName]:
+                    if domainRecord['data'].lower() == ipv6.lower():
+                        do.deleteDomainRecord(domainName,domainRecord['id'])
+                        names[domainName].remove(domainRecord)
+                        print('deleted AAAA record for ' + ipv6)
+                        if len(names[domainName]) == 0:
+                            do.deleteDomain(domainName)
+                            print('deleted domain ' + domainName)
+                            names.pop(domainName)
+                            
+    #lastly, update the inventory
+    writeInventory()
+            
+                
+            
     
     
 def printUsage():
@@ -382,7 +445,7 @@ if __name__ == '__main__':
     cmd = sys.argv[1]
     
     if cmd == 'inventory':
-            writeInventory(do)
+            writeInventory()
     elif cmd == 'deploy':
         cloudDef = loadCloudDef('deploy')
         deploy(cloudDef)

@@ -121,9 +121,15 @@ class Context:
         body['type'] = recType
         return self.doPOST('/v2/domains/' + domain + '/records', body)
 
+    def deleteDomain(self, domainName):
+        self.doDELETE('/v2/domains/' + domainName)
+
     
     def deleteDomainRecord(self, domainName, recordId):
         self.doDELETE('/v2/domains/' + domainName + '/records/{0}'.format(recordId))
+        
+    def deleteDroplet(self, dropletId):
+        self.doDELETE('/v2/droplets/{0}'.format(dropletId) )
         
             
     def publicAddressIPV4(self, droplet):
