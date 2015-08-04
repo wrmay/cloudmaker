@@ -382,26 +382,26 @@ def undeploy(cloudDef):
                     break
                 
             #search the name map for ipv4
-            for domainName in names.keys():
-                for domainRecord in names[domainName]:
+            for domainName in names.keys()[:]:
+                for domainRecord in names[domainName][:]:
                     if domainRecord['data'] == ipv4:
                         do.deleteDomainRecord(domainName,domainRecord['id'])
                         names[domainName].remove(domainRecord)
-                        print('deleted A record for ' + ipv4)
+                        print('deleted A record {0} for {1}'.format(domainRecord['name'],ipv4))
                         if len(names[domainName]) == 0:
                             do.deleteDomain(domainName)
                             print('deleted domain ' + domainName)
                             names.pop(domainName)
-                            
-                        break
+                                
+                    
 
             #search the name map for ipv6
-            for domainName in names.keys():
-                for domainRecord in names[domainName]:
+            for domainName in names.keys()[:]:
+                for domainRecord in names[domainName][:]:
                     if domainRecord['data'].lower() == ipv6.lower():
                         do.deleteDomainRecord(domainName,domainRecord['id'])
                         names[domainName].remove(domainRecord)
-                        print('deleted AAAA record for ' + ipv6)
+                        print('deleted AAAA record {0} for {1}'.format(domainRecord['name'],ipv6))
                         if len(names[domainName]) == 0:
                             do.deleteDomain(domainName)
                             print('deleted domain ' + domainName)
