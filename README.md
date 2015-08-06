@@ -30,7 +30,8 @@ An example is show below:
 {
     "digital_ocean_api_key" : "fjejhuiu9880hthisimadeup0845943unsff4utrjd"
     ,"public_ssh_key" : "ssh-rsa fr99bjr9urugrbtthisisalsomadeupPDQ fredy@acme.com"
-}```
+}
+```
 
 #Usage#
 
