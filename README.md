@@ -106,7 +106,6 @@ the bottom of the page.
         , "names" : [ "server2.acme.com"]
     }
 }
-}
 
 ```
 
