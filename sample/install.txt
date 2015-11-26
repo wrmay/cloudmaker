@@ -1,0 +1,20 @@
+    1  wget -q -O- http://debian.koha-community.org/koha/gpg.asc | sudo apt-key add -
+    2  wget -q -O- http://debian.koha-community.org/koha/gpg.asc | apt-key add -
+    3   echo 'deb http://debian.koha-community.org/koha stable main' |  tee /etc/apt/sources.list.d/koha.list
+    4  sudo apt-get update
+    5  apt-get update
+    6  apt-get install koha-common
+    7  apt-get install mysql-server
+    8  vi /etc/koha/koha-sites.conf 
+    9  a2enmod rewrite
+   10  a2enmod cgi
+   11  service apache2 restart
+   12  koha-create --create-db testlib
+   13  koha-email-enable testlib
+   14  less /etc/koha/sites/testlib/koha-conf.xml 
+   15  pwd
+   16  history
+   17  history > install.txt
+
+also had to set up DNS entries , input DB password
+
