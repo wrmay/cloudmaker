@@ -9,6 +9,6 @@ setup(name='cloudmaker',
       author_email='randy@mathysphere.com',
       url='https://github.com/wrmay/cloudmaker',
       packages=['cloudmaker'],
-      package_dir={'cloudmaker' : 'src/packages/cloudmaker'},
+      package_dir={'' : 'src/packages'},
       scripts=['src/scripts/cloudmaker']
      )
