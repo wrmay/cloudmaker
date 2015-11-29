@@ -98,6 +98,9 @@ class Context:
     def getAction(self, id):
         return self.doGET('/v2/actions/{0}'.format(id))
     
+    def getDroplet(self, id):
+        return self.doGET('/v2/droplets/{0}'.format(id))
+    
     def registerSSHKey(self, key):
         body = dict()
         body['public_key'] = key
