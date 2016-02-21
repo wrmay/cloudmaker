@@ -2,157 +2,12 @@
 from __future__ import print_function
 import cloudmaker.digitalocean
 import json
+import logging
 import os.path
 import re
 import sys
 import time
 
-
-# droplet is the droplet definition returned by the Digital Ocean
-# API, dropletReq is from the cloud definition file
-def dropletMatchesRequest(droplet, dropletReq):
-    if droplet['image']['slug'] is None:
-        return False
-    elif droplet['image']['slug'] != dropletReq['image']:
-        return False
-    
-    if droplet['size_slug'] != dropletReq['size']:
-        return False
-    
-    if droplet['region']['slug'] != dropletReq['region']:
-        return False
-    
-    if dropletReq['backups']:
-        if 'backups' not in droplet['features']:
-            return False
-    else:
-        if 'backups' in droplet['features']:
-            return False
-    
-    #dont check the name enrtries - if this is a retry of a failed provision
-    #then the droplet may exist but the names haven't been created yet
-    
-    return True
-
-# also validates the request
-def createDropletRequest(dropletDef):
-    result = dict()
-    
-    if 'region' not in dropletDef:
-        raise Exception('droplet defintion is missing required property: region')
-    
-    regionName = dropletDef['region']
-    
-    if regionName not in regions:
-        raise  Exception('droplet definition has unkown or unavailable region: ' + regionName)
-    else:
-        result['region'] = regionName
-        
-    #backups
-    if 'backups' not in dropletDef:
-        raise Exception('droplet defintion is missing required property: backups')
-        
-    if dropletDef['backups']:
-        if 'backups' not in regions[regionName]['features']:
-            raise Exception('droplet requested backups, which are not supported in region ' + regionName)
-        else:
-            result['backups'] = True
-    else:
-        result['backups'] = False
-       
-    #image 
-    if 'image' not in dropletDef:
-        raise Exception('droplet defintion is missing required property: backups')
-    
-    imageName = dropletDef['image']
-    if imageName not in images:
-        raise Exception(imageName + ' is not a known image name')
-    
-    if regionName not in images[imageName]['regions']:
-        raise Exception(imageName + ' image does not exist in ' + regionName + ' region')
-    
-    result['image'] = imageName
-    
-    #size
-    if 'size' not in dropletDef:
-        raise Exception('droplet defintion is missing required property: size')
-        
-    if dropletDef['size'] not in regions[regionName]['sizes']:
-        raise Exception(dropletDef['size'] + ' is not a defined size in the ' + regionName + ' region')
-    
-    result['size'] = dropletDef['size']
-    
-    if 'ipv6' in regions[regionName]['features']:
-        result['ipv6'] = True
-    else:
-        result['ipv6'] = False
-        
-    if 'private_networking' in regions[regionName]['features']:
-        result['private_networking'] = True
-    else:
-        result['private_networking'] = False
-        
-    # currently not supporting user data
-    # result['user_data'] = None
-    
-    return result
-
-
-def domainName(name):
-    i = name.find('.')
-    if i == -1:
-        raise Exception(name + ' is not a valid domain name and does not contain a valid domain name')
-    
-    j = name.find('.', i+1)
-    if j == -1:
-        return name
-    else:
-        return name[i+1:]
-
-
-def recordName(name):
-    i = name.find('.')
-    if i == -1:
-        raise Exception(name + ' is not a valid domain name and does not contain a valid domain name')
-    
-    j = name.find('.', i+1)
-    if j == -1:
-        return '@'
-    else:
-        return name[:i]
-
-
-def verifyDomainRecord(name, nameMap, ipAddress, rtype):
-    dname = domainName(name)
-    rname = recordName(name)
-    if dname in nameMap:
-        result = False
-        for r in nameMap[dname]:
-            if r['type'] == rtype:
-                if r['name'] == rname:
-                    if r['data'].lower() == ipAddress.lower():
-                        result = True
-                        break
-                    else:
-                        raise Exception('An ' + rtype + ' record for ' + name + ' exists but points to the wrong IP address: ' + r['data'] )
-        
-        return result
-    else:
-        return False
-
-
-def createDomainRecord(nameMap, name, ipAddress, rtype):
-    dname = domainName(name)
-    rname = recordName(name)
-    if dname not in nameMap:
-        do.createDomain(dname,'127.0.0.1')
-        nameMap[dname] = []
-        for dr in do.listDomainRecords(dname)['domain_records']:
-            do.deleteDomainRecord(dname, dr['id'])
-            
-    rec = do.createDomainRecord(dname, rname, ipAddress, rtype)
-    nameMap[dname].append(rec['domain_record'])
-    
     
 def writeInventory():
     # make a map of domain records by IP address - one for A records
@@ -226,216 +81,50 @@ def writeInventory():
     print('wrote inventory to file: "inventory.json"', file=sys.stderr)
     
     
-def deploy(cloudDef):
-    global regions,images
-            
-    #grab reference information about regions and images and existing droplets
-    resp = do.listRegions()
-    regions = dict()
-    for region in resp['regions']:
-        if region['available']:
-            regions[region['slug']] = region
-        
-    resp = do.listImages()
-    images = dict()
-    for image in resp['images']:
-        if image['slug'] is not None:
-            images[image['slug']] = image
-            
-    resp = do.listDroplets()
-    droplets = dict()
-    for droplet in resp['droplets']:
-        droplets[droplet['name']] = droplet
-
-    provisionedDroplets = dict() #map of droplet name to action id        
-    nameRE = re.compile('[a-zA-Z0-9.]+$')        
-    for name in cloudDef.keys():
-        if nameRE.match(name) is None:
-            sys.exit('{0} is an invalid droplet name.  Droplet names may contain numbers, letters and the period character'.format(name))
-            
-        if name in droplets:
-            if dropletMatchesRequest(droplets[name], cloudDef[name]):
-                print('a droplet matching {0} already exists'.format(name), file=sys.stderr)
-            else:
-                sys.exit('a droplet named {0} already exists but with different characteristics'.format(name))
-        else:
-            dropletRequest = createDropletRequest(cloudDef[name])
-            dropletRequest['name'] = name
-            resp = do.createDroplet(dropletRequest)
-            provisionedDroplets[name] = resp['links']['actions'][0]['id']
-            print('droplet ' + name + ' requested in region ' + dropletRequest['region'], file=sys.stderr)
-            
-    if len(provisionedDroplets) > 0:        
-        # now wait for all droplets to actually be provisioned
-        errCount = 0
-        print('waiting 60s for droplets to be provisioned', file=sys.stderr)
-        time.sleep(60)
-        for attempt in range(0,10):
-            for name in provisionedDroplets.keys():
-                resp = do.getAction(provisionedDroplets[name])
-                if resp['action']['status'] == 'completed':
-                    print('droplet {0} provisioned'.format(name), file=sys.stderr)
-                    del provisionedDroplets[name]
-                elif resp['action']['status'] == 'errored':
-                    errCount += 1
-                    print('provisioning of droplet {0} failed'.format(name), file=sys.stderr)
-                    del provisionedDroplets[name]
-            
-            if len(provisionedDroplets) == 0:
-                break
-            
-            print('waiting 20s for droplets to be provisioned', file=sys.stderr)
-            time.sleep(20)
-            
-        if errCount > 0:
-            raise Exception('{0} droplet(s) could not be provisioned'.format(errCount))
-        
-        if len(provisionedDroplets) > 0:
-            raise Exception('some provision operations could not be verified')
-      
-   
-    #retrieve all of the droplets that are in the cloud definition
-    #including those just created and those that already existed
-    dropletMap = dict()
-    droplets = do.listDroplets()['droplets']
-    for droplet in droplets:
-        if droplet['name'] in cloudDef:
-            dropletMap[droplet['name']] = droplet
-   
-    #compile a summary of the current state of affairs w.r.t DNS names
-    #nameMap will contain domain name + an array of domain records returned
-    #from the digital ocean API (only A records and AAAA records)
-    nameMap = dict()
-    domains = do.listDomains()
-    for d in domains['domains']:
-        recordList = []
-        domainRecords = do.listDomainRecords(d['name'])
-        for dr in domainRecords['domain_records']:
-            if dr['type'] == 'A' or dr['type'] == 'AAAA':
-                recordList.append(dr)
-        
-        nameMap[d['name']] = recordList
-        
-    #go through cloudDef - if a record already exists - verify it points to the
-    #correct address (raise an error if not) - if the record doesn't exist,
-    #create it, creating the domain as well when necessary
-    for dropletName in cloudDef.keys():
-        dropletDef = cloudDef[dropletName]
-        if 'names' in dropletDef and len(dropletDef['names']) > 0:
-            publicAddressV4 = do.publicAddressIPV4(dropletMap[dropletName])
-            publicAddressV6 = do.publicAddressIPV6(dropletMap[dropletName])
-            for name in dropletDef['names']:
-                if verifyDomainRecord(name, nameMap, publicAddressV4, 'A'):
-                    print('A record for ' + name + ' verified')
-                else:
-                    createDomainRecord(nameMap, name, publicAddressV4, 'A')
-                    print('created A record ' + name + ' pointing to ' + publicAddressV4)
-                
-                if publicAddressV6 != None:
-                    if verifyDomainRecord(name, nameMap, publicAddressV6, 'AAAA'):
-                        print('AAAA record for ' + name + ' verified')
-                    else:
-                        createDomainRecord(nameMap, name, publicAddressV6, 'AAAA')
-                        print('created AAAA record ' + name + ' pointing to ' + publicAddressV6)
-                    
-    #lastly, update the dropletDef with network information and write it back
-    #uses dropletMap created above
-    writeInventory()
+def deploy(directory):
+    deployArgs = loadDigitalOceanDeployArgs(directory)
     
+    dropletDef = do.deploy(deployArgs)
+    if 'dnsRecords' in deployArgs:
+        for name in deployArgs['dnsRecords']:
+            do.createNameRecords(dropletDef,name)
     
-def undeploy(cloudDef):
-    #create a map of DNS records by domain name
-    # each entry is a list of records (A and AAAA)
-    names = dict()
-    for domain in do.listDomains()['domains']:
-        domainName = domain['name']
-        names[domainName] = []
-        for domainRec in do.listDomainRecords(domainName)['domain_records']:
-            if not domainRec['type'] == 'NS':
-                names[domainName].append(domainRec)
-        
+def undeploy(directory):
+    deployArgs = loadDigitalOceanDeployArgs(directory)
+    if 'dnsRecords' in deployArgs:
+        for name in deployArgs['dnsRecords']:
+            do.removeNameRecords(name)
     
-    # create a map of droplets by droplet name
-    resp = do.listDroplets()
-    droplets = dict()
-    for droplet in resp['droplets']:
-        droplets[droplet['name']] = droplet 
-        
-    for dname in cloudDef.keys():
-        if dname in droplets:
-            do.deleteDroplet(droplets[dname]['id'])
-            print('deleted droplet ' + dname, file=sys.stderr)
-            
-            # now find all A and AAAA records pointing to the
-            # droplets public Ipv4 and Ipv6 interfaces
-            ipv4 = None
-            ipv6 = None
-            
-            for network in droplets[dname]['networks']['v4']:
-                if network['type'] == 'public':
-                    ipv4 = network['ip_address']
-                    break
-                
-            for network in droplets[dname]['networks']['v6']:
-                if network['type'] == 'public':
-                    ipv6 = network['ip_address']
-                    break
-                
-            #search the name map for ipv4
-            for domainName in names.keys()[:]:
-                for domainRecord in names[domainName][:]:
-                    if domainRecord['data'] == ipv4:
-                        do.deleteDomainRecord(domainName,domainRecord['id'])
-                        names[domainName].remove(domainRecord)
-                        print('deleted A record {0} for {1}'.format(domainRecord['name'],ipv4))
-                        if len(names[domainName]) == 0:
-                            do.deleteDomain(domainName)
-                            print('deleted domain ' + domainName)
-                            names.pop(domainName)
-                                
-                    
-
-            #search the name map for ipv6
-            for domainName in names.keys()[:]:
-                for domainRecord in names[domainName][:]:
-                    if domainRecord['data'].lower() == ipv6.lower():
-                        do.deleteDomainRecord(domainName,domainRecord['id'])
-                        names[domainName].remove(domainRecord)
-                        print('deleted AAAA record {0} for {1}'.format(domainRecord['name'],ipv6))
-                        if len(names[domainName]) == 0:
-                            do.deleteDomain(domainName)
-                            print('deleted domain ' + domainName)
-                            names.pop(domainName)
-                            
-    #lastly, update the inventory
-    writeInventory()
-            
-                
-            
-    
-    
+    do.undeploy(deployArgs['name'])
+                        
 def printUsage():
     print('Usage:',file=sys.stderr)
     print('   cloudmaker inventory              prints inventory to cloudmaker_inventory.json',file=sys.stderr)
-    print('   cloudmaker deploy <cloud.json>    deploys inventory to described in <cloud.json>',file=sys.stderr)
-    print('   cloudmaker ubdeploy <cloud.json>  undeploys inventory to described in <cloud.json>',file=sys.stderr)
+    print('   cloudmaker deploy <dir>    deploys server described in <dir>',file=sys.stderr)
+    print('   cloudmaker ubdeploy <dir>  undeploys server described in <dir>',file=sys.stderr)
     
     
-def loadCloudDef(cmd):
-    if len(sys.argv) < 3:
-        sys.exit('cloud definition file not provided for {0} command'.format(cmd))
-    
-    fname = sys.argv[2]
-    if not os.path.isfile(fname):
-        sys.exit('cloud definition file {0} not found'.format(fname))
+def loadDigitalOceanDeployArgs(directory):
+
+    configFile = os.path.join(directory,'server.json')
+    if not os.path.isfile(configFile):
+        sys.exit('required configuration file: {0} is not present'.format(configFile) )
         
-    with open(fname, 'r') as cloudFile:
-        cloudDef = json.load(cloudFile)
+    with open(os.path.join(directory,'server.json'), 'r') as cloudFile:
+        config = json.load(cloudFile)
         
-    return cloudDef
+    if not 'digitalocean' in config:
+        sys.exit('{0} must be a json document containing the key: {1}'.format(configFile,'digitalocean'))
+        
+    if not 'provision' in config['digitalocean']:
+        sys.exit('"digitalocean" section of {0} must contain the key: "provision"'.format(configFile))
+
+    return config["digitalocean"]["provision"]
     
     
 if __name__ == '__main__':
+    logging.basicConfig(level='INFO')
+    
     if len(sys.argv) < 2:
         printUsage()
         sys.exit(1)
@@ -443,15 +132,16 @@ if __name__ == '__main__':
     do = cloudmaker.digitalocean.Context()
     
     cmd = sys.argv[1]
+    directory = sys.argv[2]
+    if not os.path.isdir(directory):
+        sys.exit('"{0}" must be a directory'.format(directory))
     
     if cmd == 'inventory':
             writeInventory()
     elif cmd == 'deploy':
-        cloudDef = loadCloudDef('deploy')
-        deploy(cloudDef)
+        deploy(directory)
     elif cmd == 'undeploy':
-        cloudDef = loadCloudDef('undeploy')
-        undeploy(cloudDef)
+        undeploy(directory)
         pass
     else:
         sys.exit('unknown command: ' + cmd)

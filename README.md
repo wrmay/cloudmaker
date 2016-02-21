@@ -1,12 +1,17 @@
 #Release Notes#
 
-0.1 is the initial release of Cloudmaker. Enjoy ... and please feel free to
-suggest or contribute improvements!
+0.3 This release extends cloudmaker beyond simply provisioning on DigitalOcean.
+It still does that but now cloudmaker also provides tools for setting up a
+server after it has been provisioned.
 
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.
-You define your inventory in a json cloud definition file and Cloudmaker takes
-care deploying to Digital Ocean including setting up your DNS records.
+It also provides simple python methods for doing common setup tasks like
+installing packages.
+
+With Cloudmaker, each server is described by a directory which contains 2 files.
+* server.json - describes the server to be deployed
+* setup.py - a python script that will be run on the server after it has been provisioned
 
 #Prerequisites#
 * A Digital Ocean Account
@@ -21,8 +26,7 @@ does not need your privte ssh key.
 `pip install cloudmaker`
 
 #Setup#
-1. Create a directory to hold the configuration files for your cloud deployment.
-You must use a different directory for each Digital Ocean account.
+1. Create a directory for each server you want to deploy.
 2. Create _security.json_ containing your Digital Ocean API key and the
 public portion of the ssh key that you will use to log on to your servers.
 An example is show below:
@@ -38,7 +42,7 @@ An example is show below:
 Cloudmaker supports the following commands:
 
 ```
-cloudmaker deploy <cloud_def.json>
+cloudmaker deploy <dir>
 ```
 Deploys a collection of resources desribed by a cloud defintion file. See the
 reference section for details of the format.
@@ -84,27 +88,19 @@ Updates the _inventory.json_ with the latest information.
 
 #Reference#
 
-__Cloud Definition File Format__
+__server.json file format__
 
 An example is shown below. Valid values for region, size and image appear at
 the bottom of the page.
 
 ```json
 {
-    "server1" : {
-          "region" : "nyc3"
-        , "size" : "1gb"
-        , "image" :  "debian-7-0-x64"
-        , "backups" : false
-        , "names" : [ "server1.acme.com", "acme.com"]
-    }
-    ,"server2" : {
-          "region" : "nyc3"
-        , "size" : "1gb"
-        , "image" :  "debian-7-0-x64"
-        , "backups" : false
-        , "names" : [ "server2.acme.com"]
-    }
+    "id" : "server1"
+    , "region" : "nyc3"
+    , "size" : "1gb"
+    , "image" :  "debian-7-0-x64"
+    , "backups" : false
+    , "names" : [ "server1.acme.com", "acme.com"]
 }
 
 ```

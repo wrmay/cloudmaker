@@ -2,10 +2,13 @@
 from __future__ import print_function
 import httplib
 import json
+import logging
 import os.path
 import sys
+import time
 
-SECURITY_FILE='security.json'
+
+SECURITY_FILE='~/.cloudmaker.json'
 DO_API_HOST='api.digitalocean.com'
 PER_PAGE=1000
 DIGITAL_OCEAN_API_KEY='digital_ocean_api_key'
@@ -14,10 +17,10 @@ PUBLIC_SSH_KEY='public_ssh_key'
 class Context:
     
     def __init__(self):
-        if not os.path.isfile(SECURITY_FILE):
+        if not os.path.isfile(os.path.expanduser(SECURITY_FILE)):
             raise Exception('could not initialize Digital Ocean Context because the security file, ' + SECURITY_FILE + 'does not exist' )
         
-        with open(SECURITY_FILE,'r') as securityFile:
+        with open(os.path.expanduser(SECURITY_FILE),'r') as securityFile:
             self.securityInfo = json.load(securityFile)
             print('loaded security information from ' + os.path.abspath(SECURITY_FILE), file=sys.stderr)
             
@@ -134,7 +137,8 @@ class Context:
     def deleteDroplet(self, dropletId):
         self.doDELETE('/v2/droplets/{0}'.format(dropletId) )
         
-            
+    #gets the public ipv4 address from a droplet definition
+    #e.g. one returned from getDroplet
     def publicAddressIPV4(self, droplet):
         for network in droplet['networks']['v4']:
             if network['type'] == 'public':
@@ -142,12 +146,238 @@ class Context:
         
         return None
     
+    #gets the public ipv6 address from a droplet definition
+    #e.g. one returned from getDroplet
     def publicAddressIPV6(self, droplet):
         for network in droplet['networks']['v6']:
             if network['type'] == 'public':
                 return network['ip_address']
         
         return None
+    
+    ### begin high level functions
+
+        
+    # This idempotent method first checks for a droplet with the given name
+    # that is already deployed. If one is found, that droplet def is compared to
+    # the passed droplet def. If there is a difference, the droplet will be
+    # undeployed and reprovisioned, if they are the same , the droplet def
+    # of the existing droplet will be returned. If no droplet with the same
+    # name exists, a new one will be provisioned and its definition will be
+    # returned.
+    def deploy(self, dropletDef):
+        serverName = dropletDef['name']
+        resp = self.listDroplets()
+        
+        result = None
+        for droplet in resp['droplets']:
+            if droplet['name'] == serverName:
+                same = True
+                
+                if dropletDef['region'] != droplet['region']['slug']:
+                    #logging.info('existing={0} requested={1}'.format(droplet['region']['name'],dropletDef['region']))
+                    same = False
+                elif dropletDef['size'] != droplet['size_slug']:
+                    #logging.info('existing={0} requested={1}'.format(droplet['size_slug'],dropletDef['size']))
+                    same = False
+                elif dropletDef['image'] != droplet['image']['slug']:
+                    #logging.info('existing={0} requested={1}'.format(droplet['image']['slug'],dropletDef['image']))
+                    same = False
+                elif  'backups' in dropletDef and (dropletDef['backups'] == True and  'backups' not in droplet['features']):
+                    same = False
+                elif 'ipv6' in dropletDef and ( dropletDef['ipv6'] == True and 'ipv6' not in droplet['features']):
+                    same = False
+                elif 'private_networking' in dropletDef and (dropletDef['private_networking'] == True and 'private_networking' not in droplet['features']):
+                    same = False
+    
+                if same:                    
+                    logging.info(serverName + ' is already deployed')
+                    result = droplet
+                    return result #RETURN
+                else:
+                    self.deleteDroplet(droplet['id'])
+                    logging.info('deleted droplet named ' + serverName + ' having a different definition')
+                    break
+        
+        resp = self.createDroplet(dropletDef)
+        dropletId = resp['droplet']['id']
+        action = resp['links']['actions'][0]['id']
+        timedOut = True
+        logging.info('waiting 60s for ' + dropletDef['name'] + ' to be provisioned on Digital Ocean')
+        time.sleep(60)
+        for attempt in range(10):
+            getActionResp = self.getAction(action)
+            if getActionResp['action']['status'] == 'completed':
+                timedOut = False
+                break
+            elif getActionResp['action']['status'] == 'errored':
+                msg = 'provisioning of ' + dropletDef['name'] + ' on Digital Ocean failed'
+                logging.error(msg)
+    
+            logging.info('waiting 20s for ' + dropletDef['name'] + ' to be provisioned on Digital Ocean')
+            time.sleep(20)
+        
+        if timedOut:
+            raise Exception('timed out waiting for ' + dropletDef['name'] + ' to deploy on Digital Ocean')
+        
+        resp = self.getDroplet(dropletId)
+        logging.info(serverName + ' deployed on Digital Ocean')
+        return resp['droplet']
+
+
+    # this is an idempotent version of create domain that will create a new
+    # domain if it does not exist - does not return anything
+    def createDomainIfAbsent(self, domainName):
+        domains = self.listDomains()
+        found = False
+        for domain in domains['domains']:
+            if domain['name'] == domainName:
+                found = True
+                break
+            
+        if found:
+            logging.info('domain "' + domainName + '" already exists')
+        else:
+            self.createDomain(domainName, '127.0.0.1')
+            self.listDomainRecords(domainName)
+            did = None
+            for domainrec in self.listDomainRecords(domainName)['domain_records']:
+                if domainrec['name'] == '@' and domainrec['type'] != 'NS':
+                    did = domainrec['id']
+                    break
+                
+            if did is not None:
+                self.deleteDomainRecord(domainName, did)
+                
+            logging.info('domain "' + domainName + '" created')
+
+    def parseFQDN(self,fqdn):
+        lastDot = fqdn.find('.')
+        if lastDot == -1:
+            logging.error("expected a fully qualified domain name - found: " + fqdn)
+            raise Exception('unexepected error' )
+            
+        while True:
+            i = fqdn.find('.',lastDot + 1)
+            if i == -1:
+                break
+            else:
+                lastDot = i
+                
+        secondToLastDot = fqdn.find('.',0,lastDot)
+        
+        if secondToLastDot == -1:
+            domainName = fqdn
+            recordName = '@'
+        else:
+            while True:
+                i = fqdn.find('.', secondToLastDot + 1, lastDot)
+                if i == -1:
+                    break
+                else:
+                    secondToLastDot = i
+                    
+            domainName = fqdn[secondToLastDot + 1:]
+            recordName = fqdn[:secondToLastDot]
+        
+        return recordName,domainName
+
+    #idempotent A and AAAA record creation for a droplet
+    def createNameRecords(self, dropletDef, fqdn):        
+        parseResult = self.parseFQDN(fqdn)
+        domainName = parseResult[1]
+        recordName = parseResult[0]
+        
+        self.createDomainIfAbsent(domainName)
+        
+        ipv4 = self.publicAddressIPV4(dropletDef)
+        ipv6 = self.publicAddressIPV6(dropletDef)
+        if ipv6 is not None:
+            ipv6 = ipv6.lower()
+        
+        foundARecord = False
+        foundAAAARecord = False
+            
+        # if the domain already exists, check the existing domain records
+        # if they point to the wrong thing, remove them, if they are
+        # correct, set aRecordFound/aaaaRecordFound = true
+        domainRecords = self.listDomainRecords(domainName)
+        for dr in domainRecords['domain_records']:
+            if dr['type'] == 'A':
+                if dr['name'] == recordName:        
+                    if dr['data'] == ipv4:
+                        foundARecord = True
+                        logging.info('Correct A record for ' + recordName + '.' + domainName + ' already exists')
+                    else:
+                        self.deleteDomainRecord(domainName, dr['id'])
+                        logging.info('Removed incorrect A record for ' + fqdn + ' pointing to ' + dr['data'])
+
+            if dr['type'] == 'AAAA':
+                if dr['name'] == recordName:        
+                    if dr['data'].lower() == ipv6:
+                        foundAAAARecord = True
+                        logging.info('Correct AAAA record for ' + recordName + '.' + domainName + ' already exists')
+                    else:
+                        self.deleteDomainRecord(domainName, dr['id'])
+                        logging.info('Removed incorrect AAAA record for ' + fqdn + ' pointing to ' + dr['data'])
+
+        if not foundARecord and ipv4 is not None:
+            self.createDomainRecord(domainName, recordName, ipv4, 'A')
+            logging.info('created A record for ' + recordName + '.' + domainName + ' pointing to ' + ipv4)
+            
+        if not foundAAAARecord and ipv6 is not None:
+            self.createDomainRecord(domainName, recordName, ipv6, 'AAAA')
+            logging.info('created AAAA record for ' + recordName + '.' + domainName + ' pointing to ' + ipv6)
+    
+
+    def removeNameRecords(self, fqdn):
+        parseResult = self.parseFQDN(fqdn)
+        recordName = parseResult[0]
+        domainName = parseResult[1]
+    
+        # check that the domain exists
+        domainExists = False
+        for domain in self.listDomains()['domains']:
+            if domain['name'] == domainName:
+                domainExists = True
+                break
+            
+        if not domainExists:
+            logging.info('"' + domainName + '" domain does not exist')
+            return
+    
+        countNonNSRecords = 0
+        deletedRecords = 0
+        for domainRec in self.listDomainRecords(domainName)['domain_records']:
+            if domainRec['type'] != 'NS':
+                countNonNSRecords += 1            
+                if domainRec['type'] == 'A' or domainRec['type'] == 'AAAA':
+                    if domainRec['name'] == recordName:
+                        self.deleteDomainRecord(domainName, domainRec['id'])
+                        countNonNSRecords -= 1
+                        deletedRecords += 1
+                        logging.info('removed "' + domainRec['type'] + '" record for ' + fqdn)
+                        
+        if deletedRecords == 0:
+            logging.info('there are no "A" or "AAAA" records for ' + fqdn)
+            
+        if countNonNSRecords == 0:
+            self.deleteDomain(domainName)
+            logging.info('deleted DNS domain: ' + domainName)
+                        
+          
+    def undeploy(self,dropletName):
+        found = False
+        resp = self.listDroplets()
+        for droplet in resp['droplets']:
+            if droplet['name'] == dropletName:
+                found = True
+                self.deleteDroplet(droplet['id'])
+                logging.info('deleted droplet ' + dropletName)
+                
+        if found == False:
+            logging.info('no droplet named "' + dropletName + '" was found')
+                            
     
 if __name__ == '__main__':
     if len(sys.argv) > 1:
