@@ -1,6 +1,6 @@
 #Release Notes#
 
-0.3 This release extends cloudmaker beyond simply provisioning on DigitalOcean.
+0.3 This release extends cloudmaker beyond simply provisioning on Digital Ocean.
 It still does that but now cloudmaker also provides tools for setting up a
 server after it has been provisioned.
 
@@ -26,10 +26,10 @@ does not need your privte ssh key.
 `pip install cloudmaker`
 
 #Setup#
-1. Create a directory for each server you want to deploy.
-2. Create _security.json_ containing your Digital Ocean API key and the
-public portion of the ssh key that you will use to log on to your servers.
-An example is show below:
+* create ~/.cloudmaker.json similar to the one below containing your digital
+ocean api key and the public portion of the ssh key you will use to accesss
+your servers.
+
 ```json
 {
     "digital_ocean_api_key" : "fjejhuiu9880hthisimadeup0845943unsff4utrjd"
@@ -37,81 +37,89 @@ An example is show below:
 }
 ```
 
-#Usage#
+* test by running `cloudmaker inventory`.  You should see something like the
+following:
+
+```
+loaded security information from /Users/randy/cloudmaker/~/.cloudmaker.json
+ssh key already registered
+wrote inventory to file: "inventory.json"
+```
+
+#Walk Through: Using Cloudmaker to Deploy a Server with Apach2 and MySQL Server#
 
 Cloudmaker supports the following commands:
 
-```
-cloudmaker deploy <dir>
-```
-Deploys a collection of resources desribed by a cloud defintion file. See the
-reference section for details of the format.
-
-Provisioning is idempotent so if there is a failure part of the way through the
-provision command can be run again without harm.
-
-Provisioning proceeds in the following order:
-1. If the ssh key provided in _security.json_ is not present within your
-Digital Ocean account, it is uploaded.
-2. The servers are provisioned. If provided, the server will be provisioned
-with your public ssh key so you will be able to access it with
-passwordless ssh
-3. The requested DNS records are created / verified for each server. If
-there is already a record with the requested name, mapped to another server,
-provisioning will fail.  If the provisioned server supports  ipv6 then an
-'AAAA' record will be created pointing to its public ipv6 interface in addition to
-an 'A' record pointing to its public ipv4 interface.
-4. The full inventory of droplets provisioned in the Digital Ocean account
-(whether provisioned by cloudmaker or something else) is written to
-_inventory.json_ in the current directory.  This file contains useful
-information that cannot be known before provisioning, such as the ip addresses
-of provisioned servers
-
-If the region where a droplet is provisioned supports IPv6, it will
-automatically be enabled. Similarly, if a region supports private networking,
-it will be enabled on droplets provisioned to that region.   
-
-
-```
-cloudmaker undeploy <cloud_def.json>
-```
-All droplets defined in the cloud definition file are destroyed.  A records
-and AAAA records pointing to the droplet are removed.  If no DNS records
-other than NS records remain in the zone file, the whole domain will be removed.
-After processing is complete, _inventory.json_ will be updated to reflect the
-new state.
-
-```
-cloudmaker inventory
-```
-Updates the _inventory.json_ with the latest information.
-
-#Reference#
-
-__server.json file format__
-
-An example is shown below. Valid values for region, size and image appear at
-the bottom of the page.
+* Create a new directory: "myserver".  Edit "myserver/server.json" to look
+something like the one below
 
 ```json
 {
-    "id" : "server1"
-    , "region" : "nyc3"
-    , "size" : "1gb"
-    , "image" :  "debian-7-0-x64"
-    , "backups" : false
-    , "names" : [ "server1.acme.com", "acme.com"]
+    "digitalocean" : {
+        "provision": {
+            "name" : "myserver"
+            , "region" : "nyc3"
+            , "size" : "512mb"
+            , "image" :  "debian-7-0-x64"
+            , "backups" : false,
+            , "dnsRecords" : ["myserver.com","www.myserver.com"]
+        }
+    }
 }
-
 ```
 
-__inventory.json File Format__
+* In the same dirctory, create an install script for your server called
+"setup.py" with contents similar to the following:
 
-The _inventory.json_ file is similar to the cloud definition file with
-additional information describing the network interfaces of provisioned
-droplets.  Note that cloudmaker automatically matches DNS A records and AAAA
-records with droplets.  The names associated with each droplet are recorded in
-the _names_ attribute.
+```python
+#!/usr/bin/python
+
+import logging
+import sys
+
+from cloudmaker.linux import *
+
+logging.basicConfig(level='INFO')
+
+passw = 'my-db-pass'
+debconfSetSelections('mysql-server', 'mysql-server/root_password', 'password', passw)
+debconfSetSelections('mysql-server', 'mysql-server/root_password_again', 'password', passw)
+aptInstall('mysql-server')
+aptInstall('apache2')
+```
+
+* Deploy it!  
+
+```
+cloudmaker deploy myserver
+```
+
+* To undeploy everything and remove the name records, just run:
+
+```
+cloudmaker undeploy myserver
+```
+
+THATS IT!
+
+#Implementation Notes#
+Provisioning proceeds in the following order:
+1. If the ssh key provided in _security.json_ is not present within your
+Digital Ocean account, it is uploaded.
+2. The server is provisioned. If provided, the server will be provisioned
+with your public ssh key so you will be able to access it with
+passwordless ssh
+3. The requested DNS records are created / verified . If there is already a
+record with the requested name, mapped to another server, that one will be
+removed and a correct one will be created. Currently only "A" records are
+created.
+
+
+#Reference#
+
+
+__sample inventory.json file__
+
 
 ```json
 {
@@ -150,9 +158,8 @@ the _names_ attribute.
    }
 }
 ```
-   
 
-__Valid Values for Various Attributes__
+__Valid Values for Digital Ocean Size, Region and Image Attributes__
 
 Sizes
 * "512mb"

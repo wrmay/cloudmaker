@@ -5,9 +5,32 @@ import json
 import logging
 import os.path
 import re
+import subprocess
 import sys
 import time
 
+   
+
+def runRemoteQuietly(user, host, *args):
+    newargs = ['ssh', '-o', 'StrictHostKeyChecking=no', user + '@' + host] + list(args)
+    
+    cmd = ' '.join(newargs)
+    
+    p = subprocess.Popen(newargs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = p.communicate()
+    if p.returncode == 0:
+        logging.info('"' + cmd + '" succeeded')
+    
+    else:
+        msg = '"' + cmd + '" failed with the following output: \n\t' + output[0]
+        logging.error(msg)
+        raise Exception(msg)
+
+def runRemote(user, host, *args):
+    newargs = ['ssh', '-o', 'StrictHostKeyChecking=no', user + '@' + host] + list(args)
+    subprocess.check_call(newargs)
+
+   
     
 def writeInventory():
     # make a map of domain records by IP address - one for A records
@@ -88,6 +111,26 @@ def deploy(directory):
     if 'dnsRecords' in deployArgs:
         for name in deployArgs['dnsRecords']:
             do.createNameRecords(dropletDef,name)
+
+    #install cloudmaker on the remote system
+    #use ip address in case the name hasn't propagated
+    ipv4 = do.publicAddressIPV4(dropletDef)
+    runRemoteQuietly('root',ipv4,'apt-get','update')
+    runRemoteQuietly('root',ipv4,'apt-get','install', '-y','python-pip')
+    runRemoteQuietly('root',ipv4,'pip','install', 'cloudmaker')
+    
+    #copy the install resources and setup.py
+    setupFileExists = False
+    if os.path.isfile(os.path.join(directory,'setup.py')):
+        setupFileExists = True
+
+    subprocess.check_call(['scp','-o','StrictHostKeyChecking=no', '-r' , directory, 'root@' + ipv4 + ':/tmp/setup'])
+    
+    if setupFileExists:
+        runRemote('root',ipv4,'chmod', '+x', '/tmp/setup/setup.py')
+        runRemote('root',ipv4,'/tmp/setup/setup.py')
+        
+    runRemote('root',ipv4,'rm','-rf','/tmp/setup')
     
 def undeploy(directory):
     deployArgs = loadDigitalOceanDeployArgs(directory)
@@ -132,9 +175,11 @@ if __name__ == '__main__':
     do = cloudmaker.digitalocean.Context()
     
     cmd = sys.argv[1]
-    directory = sys.argv[2]
-    if not os.path.isdir(directory):
-        sys.exit('"{0}" must be a directory'.format(directory))
+    
+    if cmd != 'inventory':
+        directory = sys.argv[2]
+        if not os.path.isdir(directory):
+            sys.exit('"{0}" must be a directory'.format(directory))
     
     if cmd == 'inventory':
             writeInventory()
