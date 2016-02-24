@@ -124,7 +124,10 @@ def deploy(directory):
     if os.path.isfile(os.path.join(directory,'setup.py')):
         setupFileExists = True
 
-    subprocess.check_call(['scp','-o','StrictHostKeyChecking=no', '-r' , directory, 'root@' + ipv4 + ':/tmp/setup'])
+    if directory.endswith('/'):
+        directory = directory[:-1]
+        
+    subprocess.check_call(['rsync', '-avz','--delete', '-e' ,'ssh -o StrictHostKeyChecking=no', directory + '/', 'root@' + ipv4 + ':/tmp/setup'])
     
     if setupFileExists:
         runRemote('root',ipv4,'chmod', '+x', '/tmp/setup/setup.py')

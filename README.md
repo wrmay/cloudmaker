@@ -1,8 +1,8 @@
 #Release Notes#
 
-0.3 This release extends cloudmaker beyond simply provisioning on Digital Ocean.
-It still does that but now cloudmaker also provides tools for setting up a
-server after it has been provisioned.
+0.4 This release fixed a bug that made the the second execution of the
+copying of setup resources to have a different effect than the first time
+(i.e. this step was not idempotent)
 
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.
