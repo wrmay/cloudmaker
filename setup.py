@@ -3,12 +3,13 @@
 from distutils.core  import setup
 
 setup(name='cloudmaker',
-      version='0.5',
+      version='0.6',
       description='A provisioning tool for Digital Ocean cloud',
       author='Randy May',
       author_email='randy@mathysphere.com',
       url='https://github.com/wrmay/cloudmaker',
       packages=['cloudmaker'],
       package_dir={'' : 'src/packages'},
-      scripts=['src/scripts/cloudmaker']
+      scripts=['src/scripts/cloudmaker'],
+      requires=['jinja2']
      )

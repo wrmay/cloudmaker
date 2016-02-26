@@ -1,8 +1,9 @@
 #Release Notes#
 
-0.4 This release fixed a bug that made the the second execution of the
-copying of setup resources to have a different effect than the first time
-(i.e. this step was not idempotent)
+0.6 Added the cloudmaker.mysql package with the following commands:
+* createDB - idempotent equivalent to mysql 'create database X;' statment. 
+* createLocalUserWithAllPrivilegesOnDB - equivalent to mysql "grant all privileges on X.* to 'user'@'localhost' identified by 'apassword';" statement
+
 
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.
@@ -47,8 +48,6 @@ wrote inventory to file: "inventory.json"
 ```
 
 #Walk Through: Using Cloudmaker to Deploy a Server with Apach2 and MySQL Server#
-
-Cloudmaker supports the following commands:
 
 * Create a new directory: "myserver".  Edit "myserver/server.json" to look
 something like the one below
