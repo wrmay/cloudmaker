@@ -3,7 +3,7 @@
 from distutils.core  import setup
 
 setup(name='cloudmaker',
-      version='0.8',
+      version='0.9',
       description='A provisioning tool for Digital Ocean cloud',
       author='Randy May',
       author_email='randy@mathysphere.com',

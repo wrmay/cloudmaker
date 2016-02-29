@@ -117,6 +117,7 @@ def deploy(directory):
     ipv4 = do.publicAddressIPV4(dropletDef)
     runRemoteQuietly('root',ipv4,'apt-get','update')
     runRemoteQuietly('root',ipv4,'apt-get','install', '-y','python-pip')
+    runRemoteQuietly('root',ipv4,'pip','install', 'Jinja2')
     runRemoteQuietly('root',ipv4,'pip','install', 'cloudmaker')
     
     #copy the install resources and setup.py
