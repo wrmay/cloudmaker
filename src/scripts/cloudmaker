@@ -188,10 +188,10 @@ if __name__ == '__main__':
         with open(os.path.join(directory,'server.json')) as configFile:
             config = json.load(configFile)
             
-        if (not 'digital_ocean' in config) or (not 'security' in config['digital_ocean']):
+        if (not 'digitalocean' in config) or (not 'security' in config['digitalocean']):
             sys.exit('"{0}" must contain a "digital_ocean/security" section.'.format(os.path.join(directory,'server.json')))
                      
-        do = cloudmaker.digitalocean.Context(config['digital_ocean']['security'])
+        do = cloudmaker.digitalocean.Context(config['digitalocean']['security'])
             
     else:
         do = cloudmaker.digitalocean.Context()
