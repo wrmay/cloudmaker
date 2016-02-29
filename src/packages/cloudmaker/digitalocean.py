@@ -21,8 +21,12 @@ class Context:
             raise Exception('could not initialize Digital Ocean Context because the security file, ' + SECURITY_FILE + 'does not exist' )
         
         with open(os.path.expanduser(SECURITY_FILE),'r') as securityFile:
-            self.securityInfo = json.load(securityFile)
+            securityInfo = json.load(securityFile)
             print('loaded security information from ' + os.path.abspath(SECURITY_FILE), file=sys.stderr)
+            self.__init__(securityInfo)
+        
+    def __init__(self, securitySettings):
+        self.securityInfo = securitySettings
             
         if not DIGITAL_OCEAN_API_KEY in self.securityInfo:
             raise Exception(DIGITAL_OCEAN_API_KEY + ' not found in security file')

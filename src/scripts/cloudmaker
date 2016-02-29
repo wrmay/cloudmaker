@@ -174,15 +174,28 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         printUsage()
         sys.exit(1)
-        
-    do = cloudmaker.digitalocean.Context()
-    
+            
     cmd = sys.argv[1]
     
     if cmd != 'inventory':
         directory = sys.argv[2]
         if not os.path.isdir(directory):
             sys.exit('"{0}" must be a directory'.format(directory))
+            
+        if not os.path.isfile(os.path.join(directory,'server.json')):
+            sys.exit('"{0}" must contain a config file named "server.json"'.format(directory))
+            
+        with open(os.path.join(directory,'server.json')) as configFile:
+            config = json.load(configFile)
+            
+        if (not 'digital_ocean' in config) or (not 'security' in config['digital_ocean']):
+            sys.exit('"{0}" must contain a "digital_ocean/security" section.'.format(os.path.join(directory,'server.json')))
+                     
+        do = cloudmaker.digitalocean.Context(config['digital_ocean']['security'])
+            
+    else:
+        do = cloudmaker.digitalocean.Context()
+    
     
     if cmd == 'inventory':
             writeInventory()

@@ -1,9 +1,7 @@
 #Release Notes#
 
-0.6 Added the cloudmaker.mysql package with the following commands:
-* createDB - idempotent equivalent to mysql 'create database X;' statment. 
-* createLocalUserWithAllPrivilegesOnDB - equivalent to mysql "grant all privileges on X.* to 'user'@'localhost' identified by 'apassword';" statement
-
+0.7 Added an option to load digital ocean security settings from server.json['digital_ocean']
+Also added the templates package with a render method
 
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.
@@ -21,7 +19,7 @@ With Cloudmaker, each server is described by a directory which contains 2 files.
 for instructions )
 * An ssh key.  If you do not already have one, see [this article](https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2)
 for instructions.  Cloudmaker can automatically upload you public ssh key. Cloudmaker
-does not need your privte ssh key.
+does not need your private ssh key.
 
 #Installation#
 `pip install cloudmaker`
