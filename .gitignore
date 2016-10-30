@@ -1,4 +1,6 @@
+.python2/
 .vagrant
+inventory.json
 MANIFEST
 dist/
 build/

@@ -1,4 +1,5 @@
 import httplib
+import json
 import logging
 import os.path
 import random
@@ -6,6 +7,7 @@ import re
 import shutil
 import string
 import subprocess
+import sys
 import tempfile
 import urlparse
    
@@ -143,9 +145,6 @@ def aptSourceAdd(url, suite, component, listfile=None):
 def aptUpdate():
     run('apt-get', 'update')
         
-def aptInstall(package):
-    run('apt-get', 'install', '-y',package)
-    logging.info(package + ' installed')
 
 def debconfSetSelections(package, question, qtype, qval):
     p = subprocess.Popen(['debconf-set-selections'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
@@ -219,4 +218,35 @@ def kohaSuperUser(siteName):
 
 def kohaSuperUserPass(siteName):
     return subprocess.check_output(['xmlstarlet', 'sel', '-t', '-v', 'yazgfs/config/pass', '/etc/koha/sites/' + siteName + '/koha-conf.xml'])
+
+#### functions that have been rewritten in the new style below ####
+
+def aptInstall(task):
+    subprocess.check_call(['apt-get','install','-y'] + task['packages'])
+
+def pipInstall(task):
+    subprocess.check_call(['pip','install'] + task['packages'])
+
+def awsConfigure(task):
+    for key,val in task.items():
+        if key != 'task':
+            subprocess.check_call(['aws','configure','set',key,val])
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        sys.exit("The command line arguments are incorrect; please provide one command line argument indicating the setup descriptor." )
+    
+    if not os.path.exists(sys.argv[1]):
+        sys.exit('Setup descriptor file {0} could not be found'.format(sys.argv[1]))
+        
+    with open(sys.argv[1],'r') as f:
+        setup = json.load(f)
+        
+    for task in setup['setup']:
+        if task['task'] not in globals():
+            print "UNKNOWN SETUP TASK: " + task['task']
+            continue
+        
+        fn = globals()[task['task']]
+        fn(task)
     

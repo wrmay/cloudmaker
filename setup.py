@@ -10,5 +10,8 @@ setup(name='cloudmaker',
       url='https://github.com/wrmay/cloudmaker',
       packages=['cloudmaker'],
       package_dir={'' : 'src/packages'},
-      scripts=['src/scripts/cloudmaker']
+      scripts=['src/scripts/cloudmaker'],
+      package_data = {
+        'cloudmaker':['resources/*']
+      }
      )
