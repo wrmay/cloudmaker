@@ -1,7 +1,7 @@
 #Release Notes#
 
-0.1 is the initial release of Cloudmaker. Enjoy ... and please feel free to
-suggest or contribute improvements!
+1.0 With cloudmaker 1.0, the ability to not only provision, but completely
+set up your machines has been added.
 
 #Overview#
 Cloudmaker makes provisioning servers on Digital Ocean both easy and repeatable.

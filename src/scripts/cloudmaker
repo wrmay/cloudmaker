@@ -470,21 +470,24 @@ def setup(cloudDef):
             for i in range(len(droplet['setup'])):
                 step = droplet['setup'][i]
                 recipeDir = None
-                if pkg_resources.resource_exists('cloudmaker','resources/{0}'.format(step['recipe'])):
+                if os.path.isdir(step['recipe']):
+                    recipeDir = step['recipe']
+                elif pkg_resources.resource_exists('cloudmaker','resources/{0}'.format(step['recipe'])):
                     recipeDir = pkg_resources.resource_filename('cloudmaker','resources/{0}'.format(step['recipe']))
-                    stepDir = os.path.join(tempDir,'{0}'.format(i))
-                    shutil.copytree(recipeDir, stepDir)
-                    
-                    # render templates in the directory
-                    cloudDef['currentDroplet']['currentSetupStep'] = step
-                    renderTemplates(stepDir,cloudDef)
-                    
-                    #upload the directory to /tmp/setup
-                    subprocess.check_call(['scp','-q', '-o','StrictHostKeyChecking=no','-o','UserKnownHostsFile=/dev/null', '-r', stepDir, '{0}@{1}:/tmp/setup/{2}'.format(sshUser,ipAddress, i)])
                 else:
                     print('WARNING: Unknown recipe: {0}'.format(step['recipe']))
+                    continue  #CONTINUE TO NEXT SETUP STEP
+                
+                stepDir = os.path.join(tempDir,'{0}'.format(i))
+                shutil.copytree(recipeDir, stepDir)
                     
-                              
+                # render templates in the directory
+                cloudDef['currentDroplet']['currentSetupStep'] = step
+                renderTemplates(stepDir,cloudDef)
+                    
+                #upload the directory to /tmp/setup
+                subprocess.check_call(['scp','-q', '-o','StrictHostKeyChecking=no','-o','UserKnownHostsFile=/dev/null', '-r', stepDir, '{0}@{1}:/tmp/setup/{2}'.format(sshUser,ipAddress, i)])
+                    
         finally:
             shutil.rmtree(tempDir)
             
