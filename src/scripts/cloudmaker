@@ -480,6 +480,15 @@ def setup(cloudDef):
                 
                 stepDir = os.path.join(tempDir,'{0}'.format(i))
                 shutil.copytree(recipeDir, stepDir)
+                
+                # copy in additional included directories
+                if 'includeDirs' in step:
+                    for d in step['includeDirs']:
+                        if d.endswith('/'):
+                            d = d[:-1]
+                            
+                        dirName = os.path.basename(d)
+                        shutil.copytree(d,os.path.join(stepDir,dirName))
                     
                 # render templates in the directory
                 cloudDef['currentDroplet']['currentSetupStep'] = step
@@ -508,7 +517,6 @@ def renderTemplates(dirname, context):
             os.remove(os.path.join(dirname, filename))
         
 if __name__ == '__main__':
-    print('>>> DEV VERSION <<<')
     if len(sys.argv) < 2:
         printUsage()
         sys.exit(1)
