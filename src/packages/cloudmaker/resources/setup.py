@@ -1,3 +1,4 @@
+import logging
 import os
 import os.path
 import subprocess
@@ -10,6 +11,7 @@ if __name__ == '__main__':
     here = os.path.dirname(os.path.abspath(sys.argv[0]))
     dirs = os.listdir(here)
     dirs.sort()
+    os.environ['PYTHONPATH'] = here
     for name in dirs:
         dir = os.path.join(here, name)
         if os.path.isdir(dir):

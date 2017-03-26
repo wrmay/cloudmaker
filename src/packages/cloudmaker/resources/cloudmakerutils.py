@@ -10,31 +10,30 @@ import subprocess
 import sys
 import tempfile
 import urlparse
-   
-  
+
 def randomPassword(length):
     validchars = string.ascii_letters + string.digits + '@!$'
     result = ''
     rand = random.SystemRandom()
     for i in range(length):
         result += rand.choice(validchars)
-        
+
     return result
-    
+
 def run(*args):
     cmd = string.join(args)
-        
+
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = p.communicate()
     if p.returncode == 0:
         logging.info(cmd + ' succeeded')
-    
+
     else:
         msg = cmd + ' failed with the following output: \n\t' + output[0]
         logging.error(msg)
         raise Exception(msg)
- 
-    
+
+
 
 # if filename exists, it will be overwritten
 def httpDownload(url, filename):
@@ -43,12 +42,12 @@ def httpDownload(url, filename):
         msg = 'httpDownload failed: could not extract host name from url: ' + url
         logging.error(msg)
         raise Exception(msg)
-    
+
     if len(o.path) == 0:
         msg = 'httpDownload failed: could not extract path from url: ' + url
         logging.error(msg)
         raise Exception(msg)
-    
+
     conn = httplib.HTTPConnection(o.netloc)
     conn.request('GET', o.path)
     try :
@@ -57,26 +56,26 @@ def httpDownload(url, filename):
             msg = 'httpDownload failed: HTTP GET of ' + url + ' failed with response code ' + r.status
             logging.error(msg)
             raise Exception(msg)
-        
+
         with open(filename,'w', 2000) as f:
             chunk = r.read(2000)
             while len(chunk) > 0:
                 f.write(chunk)
                 chunk = r.read(2000)
-        
+
     finally:
         conn.close()
-        
+
     logging.info('downloaded ' + url + ' to ' + filename)
 
 def aptKeyAdd(keyURL):
     f = tempfile.NamedTemporaryFile(delete=False)
     f.close()
-    
+
     httpDownload(keyURL,f.name)
-    run('apt-key', 'add', f.name)    
+    run('apt-key', 'add', f.name)
     logging.info('key at ' + keyURL + ' was added to the apt trusted key list')
-    
+
 # Ensures that url, suite and argument are a debian source.  The listfile
 # argument is optional.  If listfile is not provided, /etc/apt/sources.list will
 # be examined for the given url/suite/component and they will be added if not
@@ -97,9 +96,9 @@ def aptSourceAdd(url, suite, component, listfile=None):
                 if match is not None:
                     found = True
                     break
-                
+
                 line = f1.readline()
-                
+
         if found:
             with tempfile.NamedTemporaryFile(delete=False) as f2:
                 with open('/etc/apt/sources.list', 'r') as f1:
@@ -110,17 +109,17 @@ def aptSourceAdd(url, suite, component, listfile=None):
                             f2.write(line)
                         line = f1.readline()
                 tempfileName = f2.name
-            
+
             shutil.copyfile(tmpfileName,'/etc/apt/sources.list')
             os.remove(tmpfileName)
             logging.info('removed [' + url + ' ' + suite + ' ' + component + '] from /etc/apt/sources.list')
-    
+
     if not os.path.exists(targetFile):
         with open(targetFile, 'w') as f1:
             f1.write('deb ' + url + ' ' + suite + ' ' + component + '\n')
-            
+
         logging.info('created ' + targetFile + ' and added [' + url + ' ' + suite + ' ' + component + ']')
-        
+
     else:
         found = False
         with open(targetFile, 'r') as f1:
@@ -130,45 +129,47 @@ def aptSourceAdd(url, suite, component, listfile=None):
                 if match is not None:
                     found = True
                     break
-                
+
                 line = f1.readline()
-                
+
         if found:
             logging.info('[' + url + ' ' + suite + ' ' + component + '] is already in ' + targetFile)
-        
+
         else:
             with open(targetFile, 'a') as f1:
                 f1.write('\ndeb ' + url + ' ' + suite + ' ' + component + '\n')
-                
+
             logging.info('added [' + url + ' ' + suite + ' ' + component + '] to ' + targetFile)
-                
+
 def aptUpdate():
     run('apt-get', 'update')
-        
+
+def aptInstall(package):
+    run('apt-get', 'install', '-y', package)
 
 def debconfSetSelections(package, question, qtype, qval):
     p = subprocess.Popen(['debconf-set-selections'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
     p.stdin.write(package + ' ' + question + ' ' + qtype + ' ' + qval + os.linesep)
     result = p.communicate()
-    
+
     if p.returncode == 0:
         if qtype != 'password':
             logging.info('set Debian selection for ' + package + ' : ' + question + '=' + qval)
         else:
             logging.info('set Debian selection for ' + package + ' : ' + question + '=' + '******')
-            
+
     else:
         msg = 'debconf-set-selections for ' + package + ' failed with the following error.\n\t' + result[0]
         logging.error(msg)
         raise Exception(msg)
-    
+
 def propfileSet(propfileName, propName, propVal):
     keymatchRE = r'\s*' + propName + r'\s*=\s*\S*'
     if not os.path.exists(propfileName):
         msg = 'propfileSet failed because property file ' + propfileName + ' does not exist'
         logging.error(msg)
         raise Exception(msg)
-    
+
     found = False
     tmpFile = tempfile.NamedTemporaryFile(delete=False)
     tmpFileName = tmpFile.name
@@ -182,71 +183,64 @@ def propfileSet(propfileName, propName, propVal):
                 else:
                     found = True
                     tmpFile.write(propName + '=' + propVal + '\n')
-                    
+
                 line = propfile.readline()
-                
+
         if not found:
             tmpFile.write(propName + '=' + propVal + '\n')
 
     shutil.copyfile( tmpFileName, propfileName)
     os.remove(tmpFileName)
     logging.info('set ' + propName + '=' + propVal + ' in ' + propfileName)
-    
-def apache2EnableModules(*args):
+
+# args is expected to be a list
+def apache2EnableModules(args):
     modules = string.join(args)
     for arg in args:
         run('a2enmod', arg)
-        
+
     run('service', 'apache2', 'restart')
     logging.info('enabled apache2 modules: ' + modules)
-    
-    
+
+
 def kohaCreateSite(siteName, emailEnabled):
     sitelist = subprocess.check_output('koha-list')
     if sitelist.find(siteName) != -1:
         logging.info('Koha site ' + siteName + ' already exists')
     else:
         run('koha-create', '--create-db', siteName )
-        
+        logging.info('Koha site ' + siteName + '  created')
+
     if emailEnabled:
         run('koha-email-enable', siteName)
     else:
         run('koha-email-disable', siteName)
-        
+
+    siteSU = kohaSuperUser(siteName)
+    sitePass = kohaSuperUserPass(siteName)
+    logging.info('USERNAME for ' + siteName + ' site: [' + siteSU + ']')
+    logging.info('PASSWORD for ' + siteName + ' site: [' + sitePass + ']')
+
 def kohaSuperUser(siteName):
     return subprocess.check_output(['xmlstarlet', 'sel', '-t', '-v', 'yazgfs/config/user', '/etc/koha/sites/' + siteName + '/koha-conf.xml'])
 
 def kohaSuperUserPass(siteName):
     return subprocess.check_output(['xmlstarlet', 'sel', '-t', '-v', 'yazgfs/config/pass', '/etc/koha/sites/' + siteName + '/koha-conf.xml'])
 
-#### functions that have been rewritten in the new style below ####
-
-def aptInstall(task):
-    subprocess.check_call(['apt-get','install','-y'] + task['packages'])
-
-def pipInstall(task):
-    subprocess.check_call(['pip','install'] + task['packages'])
-
-def awsConfigure(task):
-    for key,val in task.items():
-        if key != 'task':
-            subprocess.check_call(['aws','configure','set',key,val])
-
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         sys.exit("The command line arguments are incorrect; please provide one command line argument indicating the setup descriptor." )
-    
+
     if not os.path.exists(sys.argv[1]):
         sys.exit('Setup descriptor file {0} could not be found'.format(sys.argv[1]))
-        
+
     with open(sys.argv[1],'r') as f:
         setup = json.load(f)
-        
+
     for task in setup['setup']:
         if task['task'] not in globals():
             print "UNKNOWN SETUP TASK: " + task['task']
             continue
-        
+
         fn = globals()[task['task']]
         fn(task)
-    
